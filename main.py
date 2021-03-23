@@ -6,86 +6,98 @@ from torch.utils.data import DataLoader
 from torchsummary import summary
 import matplotlib.pyplot as plt
 import numpy as np
-from photoDataset import PhotoDataset
+from imageDataset import PhotoDataset, TestDataset
+from models import FSRCNN
 import os
+import math
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 EPOCHES = 1000
 BATCH_SIZE = 16
 LEARN_RATE = 0.0002
+imageSize = (250, 250)
 print(f'Using device: {DEVICE}')
 
 transform = Compose([ToTensor()])
-train_set = PhotoDataset(transform, transform)
-trans_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
+# train_set = PhotoDataset(transform, splitSize=imageSize)
+# trans_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 
-class SuperResolution(nn.Module):
-    def __init__(self):
-        super(SuperResolution, self).__init__()
-        self.main = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=5,
-                      padding=2, padding_mode='replicate'),
-            nn.PReLU(),
+test_set = TestDataset(transform)
+test_loader = DataLoader(test_set, batch_size=1, shuffle=True)
 
-            nn.Conv2d(in_channels=64, out_channels=32, kernel_size=1,
-                      padding=0, padding_mode='replicate'),
-            nn.PReLU(),
+model = FSRCNN().to(DEVICE)
+model.load_state_dict(torch.load("FSRCNN.weight"))
+# model = FSRCNN().to(DEVICE)
 
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3,
-                      padding=1, padding_mode='replicate'),
-            nn.PReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3,
-                      padding=1, padding_mode='replicate'),
-            nn.PReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3,
-                      padding=1, padding_mode='replicate'),
-            nn.PReLU(),
-
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3,
-                      padding=1, padding_mode='replicate'),
-            nn.PReLU(),
-
-
-
-            nn.ConvTranspose2d(in_channels=64, out_channels=3, kernel_size=4,
-                               stride=2, padding=1, bias=False),
-        )
-
-    def forward(self, x):
-        return self.main(x)
-
-
-model = SuperResolution().to(DEVICE)
 lossFunc = nn.MSELoss()
 optimizer = Adam(model.parameters(), lr=LEARN_RATE, betas=(0.9,0.999))
+
+def getPSNR(label, outputs, max_val=1.):
+    """
+    Compute Peak Signal to Noise Ratio (the higher the better).
+    PSNR = 20 * log10(MAXp) - 10 * log10(MSE).
+    https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
+    First we need to convert torch tensors to NumPy operable.
+    """
+    label = label.cpu().detach().numpy()
+    outputs = outputs.cpu().detach().numpy()
+    img_diff = outputs - label
+    rmse = math.sqrt(np.mean((img_diff) ** 2))
+    if rmse == 0:
+        return 100
+    else:
+        PSNR = 20 * math.log10(max_val / rmse)
+        return PSNR
+
+def showTestImage(small, super, t):
+    small = small.detach().cpu()[0]
+    super = super.detach().cpu()[0]
+
+    print(small.shape)
+    print(super.shape)
+
+    small = np.rollaxis(small.numpy(), 0, 3)
+    super = np.rollaxis(super.numpy(), 0, 3)
+
+    plt.figure(num=None, dpi=1000)
+    plt.subplot(1, 3, 1)
+    plt.title('small')
+    plt.imshow(small)
+
+    plt.subplot(1, 3, 2)
+    plt.title('Super Rsoulution')
+    plt.imshow(super)
+
+
+    plt.savefig(f'target/test_{t + 1}.png')
+    plt.close()
+
 
 def showImage(t):
     tmp = next(iter(trans_loader))
     t1 = tmp[0][0]
     t2 = tmp[1][0]
-    t3 = model(t1.reshape(1, 3, 250, 250).to(DEVICE))
+    t3 = model(t1.reshape(1, 3, imageSize[0]//2, imageSize[1]//2).to(DEVICE))
     t3 = t3.detach().cpu()[0]
 
     t1 = np.rollaxis(t1.numpy(), 0, 3)
     t2 = np.rollaxis(t2.numpy(), 0, 3)
     t3 = np.rollaxis(t3.numpy(), 0, 3)
-    plt.figure(num=None, dpi=500)
+    plt.figure(num=None, dpi=250)
     plt.subplot(1, 3, 1)
     plt.title('small')
     plt.imshow(t1)
 
     plt.subplot(1, 3, 2)
-    plt.title('big')
-    plt.imshow(t2)
+    plt.title('Super Rsoulution')
+    plt.imshow(t3)
 
     plt.subplot(1, 3, 3)
-    plt.title('product')
-    plt.imshow(t3)
+    plt.title('big')
+    plt.imshow(t2)
     # plt.show()
 
-    plt.savefig(f'target/test_{t+1}.png')
+    plt.savefig(f'target/train_{t+1}.png')
     plt.close()
 
 def train(dataloader:DataLoader, model:nn.Module, optimizer:torch.optim.Optimizer):
@@ -102,11 +114,35 @@ def train(dataloader:DataLoader, model:nn.Module, optimizer:torch.optim.Optimize
         optimizer.step()
 
 
-        if batch % 20 == 0:
+        if batch % 200 == 0:
             current = batch * batchsize
-            print(f'loss: {loss.item():>7f} [{current:>5d}/{size:>5d}]')
+            print(f'loss: {loss.item():>7f} PSNR:{getPSNR(product, big)} [{current:>5d}/{size:>5d}]')
 
-for t in range(100):
-    print(f"Epoch {t + 1}\n-------------------------------")
-    train(trans_loader, model, optimizer)
-    showImage(t)
+def test(dataloader:DataLoader, model:nn.Module):
+    size = len(dataloader.dataset)
+    model.eval()
+    with torch.no_grad():
+        for batch, (small, big) in enumerate(dataloader):
+            batchsize = small.shape[0]
+            small = small.to(DEVICE)
+            big = big.to(DEVICE)
+
+            product = model(small)
+            loss = lossFunc(product, big)
+            psnr = getPSNR(product, big)
+
+            product = model(product)
+            product = model(product)
+
+            if batch % 1 == 0:
+                showTestImage(small, product, -1)
+                current = batch * batchsize
+                print(f'loss: {loss.item():>7f} PSNR:{psnr} [{current:>5d}/{size:>5d}]')
+
+test(test_loader, model)
+
+
+# for t in range(100):
+#     print(f"Epoch {t + 1}\n-------------------------------")
+#     train(trans_loader, model, optimizer)
+#     showImage(t)
