@@ -7,7 +7,7 @@ from torchsummary import summary
 import matplotlib.pyplot as plt
 import numpy as np
 from imageDataset import PhotoDataset, TestDataset
-from models import FSRCNN
+from models import FSRCNN, VDSR
 import os
 import math
 
@@ -19,15 +19,17 @@ imageSize = (250, 250)
 print(f'Using device: {DEVICE}')
 
 transform = Compose([ToTensor()])
-# train_set = PhotoDataset(transform, splitSize=imageSize)
-# trans_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
+train_set = PhotoDataset(img_dir="./img/CAT_00/", img_big_dir=".",img_small_dir=".",
+                         transform=transform, splitSize=imageSize)
+trans_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 
 test_set = TestDataset(transform)
 test_loader = DataLoader(test_set, batch_size=1, shuffle=True)
 
-model = FSRCNN().to(DEVICE)
-model.load_state_dict(torch.load("FSRCNN.weight"))
-# model = FSRCNN().to(DEVICE)
+
+
+model = VDSR().to(DEVICE)
+model.load_state_dict(torch.load("VDSR.weight"))
 
 lossFunc = nn.MSELoss()
 optimizer = Adam(model.parameters(), lr=LEARN_RATE, betas=(0.9,0.999))
@@ -52,9 +54,6 @@ def getPSNR(label, outputs, max_val=1.):
 def showTestImage(small, super, t):
     small = small.detach().cpu()[0]
     super = super.detach().cpu()[0]
-
-    print(small.shape)
-    print(super.shape)
 
     small = np.rollaxis(small.numpy(), 0, 3)
     super = np.rollaxis(super.numpy(), 0, 3)
@@ -83,7 +82,7 @@ def showImage(t):
     t1 = np.rollaxis(t1.numpy(), 0, 3)
     t2 = np.rollaxis(t2.numpy(), 0, 3)
     t3 = np.rollaxis(t3.numpy(), 0, 3)
-    plt.figure(num=None, dpi=250)
+    plt.figure(num=None, dpi=500)
     plt.subplot(1, 3, 1)
     plt.title('small')
     plt.imshow(t1)
@@ -121,6 +120,7 @@ def train(dataloader:DataLoader, model:nn.Module, optimizer:torch.optim.Optimize
 def test(dataloader:DataLoader, model:nn.Module):
     size = len(dataloader.dataset)
     model.eval()
+    count = 0
     with torch.no_grad():
         for batch, (small, big) in enumerate(dataloader):
             batchsize = small.shape[0]
@@ -135,14 +135,14 @@ def test(dataloader:DataLoader, model:nn.Module):
             product = model(product)
 
             if batch % 1 == 0:
-                showTestImage(small, product, -1)
+                count += 1
+                showTestImage(small, product, count)
                 current = batch * batchsize
                 print(f'loss: {loss.item():>7f} PSNR:{psnr} [{current:>5d}/{size:>5d}]')
 
-test(test_loader, model)
-
-
-# for t in range(100):
+# for t in range(460,600):
 #     print(f"Epoch {t + 1}\n-------------------------------")
 #     train(trans_loader, model, optimizer)
 #     showImage(t)
+
+# test(test_loader, model)

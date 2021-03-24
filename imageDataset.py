@@ -7,10 +7,12 @@ import random
 
 
 class PhotoDataset(Dataset):
-    def __init__(self, transform=None, save=False, splitSize=(100, 100)):
-        self.imgDir = './archive/'
-        self.imgDirBig = './images/big/'
-        self.imgDirSmall = './images/small/'
+    def __init__(self, img_dir, img_big_dir, img_small_dir,
+                 transform=None, save=False, splitSize=(100, 100)):
+        self.imgDir = img_dir
+        self.imgDirBig = img_big_dir
+        self.imgDirSmall = img_small_dir
+        self.__createFolder()
         self.transform = transform
         self.splieSize = splitSize
         self.save = save
@@ -24,6 +26,12 @@ class PhotoDataset(Dataset):
     def __len__(self):
         return len(self.images) or len(self.resizePath)
 
+    def __createFolder(self):
+        if not os.path.exists(self.imgDirBig):
+            os.makedirs(self.imgDirBig)
+        if not os.path.exists(self.imgDirSmall):
+            os.makedirs(self.imgDirSmall)
+
     def __loadImage(self):
         for path in self.paths:
             originImage = cv.imread(f'{self.imgDir}{path}')
@@ -35,8 +43,8 @@ class PhotoDataset(Dataset):
         rows, cols, _ = origin.shape
         rs, cs = self.splieSize
         count = 0
-        for row in range(rows // rs - 1):
-            for col in range(cols // cs - 1):
+        for row in range(rows // rs):
+            for col in range(cols // cs):
                 bigImage = origin[row * rs:(row + 1) * rs, col * cs:(col + 1) * cs]
                 smallImage = cv.resize(bigImage, (rs // 2, cs // 2))
                 if self.save:
@@ -70,10 +78,10 @@ class TestDataset(Dataset):
         self.transform = transform
 
         img = cv.imread("./img/CAT_00/00000001_000.jpg", cv.IMREAD_COLOR)
-        x,y,_ = img.shape
-        m = min(x,y)
-        m = m if m % 2 == 0 else m-1
-        self.images.append(img[:m,:m])
+        x, y, _ = img.shape
+        m = min(x, y)
+        m = m if m % 2 == 0 else m - 1
+        self.images.append(img[:m, :m])
 
         img = cv.imread("./img/CAT_00/00000001_005.jpg", cv.IMREAD_COLOR)
         x, y, _ = img.shape
@@ -86,51 +94,10 @@ class TestDataset(Dataset):
 
     def __getitem__(self, index):
         img = self.images[index]
-        half = img.shape[0]//2
-        small = img[:half,:half]
+        half = img.shape[0] // 2
+        small = img[:half, :half]
         if self.transform:
             img = self.transform(img)
             small = self.transform(small)
 
         return small, img
-
-
-class CatDataset(Dataset):
-    def __init__(self, transform=None):
-        self.imgDirBig = './images/big/'
-        self.imgDirSmall = './images/small/'
-        self.transform = transform
-
-        # self.paths = os.listdir(self.imgDirBig)
-        paths = os.listdir(self.imgDirBig)
-        self.images = []
-        self.__loadImages(paths)
-
-    def __len__(self):
-        return len(self.images)
-
-    # def __getitem__(self, index):
-    #     path = self.paths[index]
-    #     small = cv.imread(self.imgDirSmall + path, cv.IMREAD_COLOR)
-    #     big = cv.imread(self.imgDirBig + path, cv.IMREAD_COLOR)
-    #     if self.transform:
-    #         small = self.targetTransform(small)
-    #     if self.targetTransform:
-    #         big = self.transform(big)
-    #
-    #     return small, big
-
-    def __loadImages(self, paths: list):
-        for path in paths:
-            smallImage = cv.imread(self.imgDirSmall + path, cv.IMREAD_COLOR)
-            bigImage = cv.imread(self.imgDirBig + path, cv.IMREAD_COLOR)
-            self.images.append((smallImage, bigImage))
-
-    def __getitem__(self, index):
-        small, big = self.images[index]
-        if self.transform:
-            small = self.targetTransform(small)
-        if self.targetTransform:
-            big = self.transform(big)
-
-        return (small, big)
