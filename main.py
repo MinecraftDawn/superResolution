@@ -7,7 +7,7 @@ from torchsummary import summary
 import matplotlib.pyplot as plt
 import numpy as np
 from imageDataset import PhotoDataset, TestDataset
-from models import FSRCNN, VDSR
+from models import FSRCNN, VDSR, UnetSR
 import os
 import math
 
@@ -15,11 +15,11 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 EPOCHES = 1000
 BATCH_SIZE = 16
 LEARN_RATE = 0.0002
-imageSize = (250, 250)
+imageSize = (400, 400)
 print(f'Using device: {DEVICE}')
 
 transform = Compose([ToTensor()])
-train_set = PhotoDataset(img_dir="./img/CAT_00/", img_big_dir=".",img_small_dir=".",
+train_set = PhotoDataset(img_dir="./archive/", img_big_dir="." ,img_small_dir=".",
                          transform=transform, splitSize=imageSize)
 trans_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -140,9 +140,9 @@ def test(dataloader:DataLoader, model:nn.Module):
                 current = batch * batchsize
                 print(f'loss: {loss.item():>7f} PSNR:{psnr} [{current:>5d}/{size:>5d}]')
 
-# for t in range(460,600):
-#     print(f"Epoch {t + 1}\n-------------------------------")
-#     train(trans_loader, model, optimizer)
-#     showImage(t)
+for t in range(100):
+    print(f"Epoch {t + 1}\n-------------------------------")
+    train(trans_loader, model, optimizer)
+    showImage(t)
 
 # test(test_loader, model)
