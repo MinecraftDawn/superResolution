@@ -3,7 +3,8 @@ import os
 import cv2 as cv
 import numpy as np
 from multiprocessing.pool import ThreadPool
-import random
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class PhotoDataset(Dataset):
@@ -96,6 +97,8 @@ class TestDataset(Dataset):
         img = self.images[index]
         half = img.shape[0] // 2
         small = img[:half, :half]
+        img = img.astype(np.float32) / 255
+        small = small.astype(np.float32) / 255
         if self.transform:
             img = self.transform(img)
             small = self.transform(small)
